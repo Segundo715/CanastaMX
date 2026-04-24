@@ -77,7 +77,7 @@ function initDB(PDO $pdo): void {
         CREATE TABLE IF NOT EXISTS alertas (
             id INT AUTO_INCREMENT PRIMARY KEY,
             producto_id INT,
-            tipo ENUM('mayor','menor'),
+            tipo ENUM('mayor','menor','BAJA','SUBE'),
             precio_limite DECIMAL(10,2),
             estado_id INT NULL,
             activa BOOLEAN DEFAULT TRUE,
@@ -121,6 +121,13 @@ function updateSchema(PDO $pdo): void {
     if ($columns && !in_array('usuario_id', $columns, true)) {
         $pdo->exec("ALTER TABLE alertas ADD COLUMN usuario_id INT NULL AFTER estado_id");
         $pdo->exec("ALTER TABLE alertas ADD CONSTRAINT fk_alertas_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL");
+    }
+
+    if ($columns && in_array('tipo', $columns, true)) {
+        $tipoDef = $pdo->query("SHOW COLUMNS FROM alertas WHERE Field='tipo'")->fetch(PDO::FETCH_ASSOC);
+        if ($tipoDef && strpos($tipoDef['Type'], "'BAJA'") === false) {
+            $pdo->exec("ALTER TABLE alertas MODIFY COLUMN tipo ENUM('mayor','menor','BAJA','SUBE') NOT NULL DEFAULT 'menor'");
+        }
     }
     
     $userColumns = $pdo->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='usuarios'")->fetchAll(PDO::FETCH_COLUMN);

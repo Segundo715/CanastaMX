@@ -105,7 +105,6 @@ button:hover { background: var(--green); color: #0d1117; }
 <body>
 <div class="login-box">
     <h2>Ingreso Admin CanastaMX</h2>
-    <div class="login-info">Usa: <strong>admin</strong><br>Contraseña: <strong>447jesus**</strong></div>
     <?php if ($login_error): ?>
         <div class="error"><?= htmlspecialchars($login_error) ?></div>
     <?php endif; ?>

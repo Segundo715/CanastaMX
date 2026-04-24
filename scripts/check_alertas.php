@@ -67,7 +67,7 @@ foreach ($alertas as $alerta) {
         $results[] = "  -> Notificación guardada para admin.";
         
         // Enviar notificaciones por email a los usuarios
-        enviarAlertaPorEmail($pdo, $alerta, $tipoAlerta, $region, $precioReal);
+        enviarAlertaPorEmail($pdo, $alerta, $tipoAlerta, $region, $precioReal, $alerta['usuario_id'] ?? null);
     }
 }
 
@@ -88,56 +88,4 @@ function alertaDisparada(string $tipo, float $actual, float $limite): bool {
     }
     return false;
 }
-
-function enviarAlertaPorEmail(PDO $pdo, array $alerta, string $tipoAlerta, string $region, float $precioReal) {
-    global $results;
-    
-    // Obtener usuarios: si la alerta tiene usuario_id, solo ese; si no, todos
-    if ($alerta['usuario_id']) {
-        $stmt = $pdo->prepare('SELECT id, usuario, email FROM usuarios WHERE id = ? AND rol = ?');
-        $stmt->execute([$alerta['usuario_id'], 'user']);
-        $usuarios = $stmt->fetchAll();
-    } else {
-        // Alerta general para todos los usuarios
-        $stmt = $pdo->query('SELECT id, usuario, email FROM usuarios WHERE rol = \'user\'');
-        $usuarios = $stmt->fetchAll();
-    }
-    
-    if (!$usuarios) {
-        $results[] = '  -> No hay usuarios para notificar.';
-        return;
-    }
-    
-    foreach ($usuarios as $usuario) {
-        if (!$usuario['email']) {
-            continue;
-        }
-        
-        $asunto = '[⚠️ ALERTA CanastaMX] ' . $tipoAlerta . ': ' . $alerta['producto_nombre'] . ' en ' . $region;
-        $cuerpo = 'Hola ' . $usuario['usuario'] . ',' . "\n\n" .
-                  'Se activó una alerta de monitoreo de precios:' . "\n\n" .
-                  'Producto: ' . $alerta['producto_nombre'] . "\n" .
-                  'Región: ' . $region . "\n" .
-                  'Tipo: ' . $tipoAlerta . "\n" .
-                  'Precio límite: $' . number_format($alerta['precio_limite'], 2) . "\n" .
-                  'Precio actual: $' . number_format($precioReal, 2) . "\n\n" .
-                  'Ingresa a CanastaMX para revisar los detalles.' . "\n\n" .
-                  'Saludos,' . "\n" .
-                  'Equipo CanastaMX';
-        
-        $exito = enviarEmail($usuario['email'], $asunto, $cuerpo);
-        
-        // Registrar intento en email_log
-        $stmtEmailLog = $pdo->prepare('INSERT INTO email_log (alerta_id, destinatario, asunto, estado, mensaje_error) VALUES (?,?,?,?,?)');
-        $stmtEmailLog->execute([
-            $alerta['id'],
-            $usuario['email'],
-            $asunto,
-            $exito ? 'enviado' : 'fallido',
-            $exito ? null : 'Error al enviar (revisar configuración SMTP)'
-        ]);
-        
-        $status = $exito ? 'enviado' : 'fallido';
-        $results[] = '  -> Email ' . $status . ' a ' . $usuario['email'];
-    }
-}
+?>

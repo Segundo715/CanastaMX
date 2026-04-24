@@ -77,6 +77,11 @@ function openPriceChart(id, nombre, emoji, unidad, precioBase) {
     if (adminAlertProduct) {
         adminAlertProduct.textContent = `${emoji} ${nombre}`;
     }
+
+    const userAlertProduct = document.getElementById('alertProduct');
+    if (userAlertProduct) {
+        userAlertProduct.textContent = `${emoji} ${nombre}`;
+    }
     
     refreshActiveData();
 }

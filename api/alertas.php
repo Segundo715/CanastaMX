@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 require_once __DIR__ . '/../db/conexion.php';
 require_once __DIR__ . '/mercadolibre.php'; // Para obtener precios reales
 require_once __DIR__ . '/inegi.php';        // Para obtener factor de inflación
+require_once __DIR__ . '/../scripts/email_sender.php'; // Para enviar notificaciones
 
 $pdo    = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
@@ -162,7 +163,11 @@ switch ($method) {
 
     // ── Crear Alerta ────────────────────────────────────────────────────────
     case 'POST':
-        if (!isset($_SESSION['admin'])) {
+        // Verificar permisos: admin puede crear para cualquiera, usuario solo para sí mismo
+        $isAdmin = isset($_SESSION['admin']);
+        $isUser = isset($_SESSION['user_id']);
+        
+        if (!$isAdmin && !$isUser) {
             http_response_code(401);
             echo json_encode(['success' => false, 'error' => 'No autorizado']);
             break;
@@ -175,33 +180,100 @@ switch ($method) {
             break;
         }
 
-        $estado_id = null;
+        // Obtener información del producto
+        $stmtProducto = $pdo->prepare("SELECT nombre, precio_base FROM productos WHERE id=?");
+        $stmtProducto->execute([(int)$d['producto_id']]);
+        $producto = $stmtProducto->fetch();
+        
+        if (!$producto) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Producto no encontrado']);
+            break;
+        }
+
+        // Determinar usuario destino
+        $usuarioId = null;
+        if ($isAdmin) {
+            // Admin puede especificar usuario o dejar null para todos
+            $usuarioId = !empty($d['usuario_id']) ? (int)$d['usuario_id'] : null;
+            if ($usuarioId) {
+                $stmt = $pdo->prepare('SELECT id FROM usuarios WHERE id = ? AND rol = ?');
+                $stmt->execute([$usuarioId, 'user']);
+                $userExists = $stmt->fetch();
+                if (!$userExists) {
+                    http_response_code(422);
+                    echo json_encode(['success' => false, 'error' => 'Usuario destino no válido']);
+                    break;
+                }
+            }
+        } elseif ($isUser) {
+            // Usuario solo puede crear para sí mismo
+            $usuarioId = (int)$_SESSION['user_id'];
+        }
+        $region = 'Nacional';
         if (!empty($d['region']) && $d['region'] !== 'Nacional') {
             $stmt = $pdo->prepare("SELECT id FROM estados WHERE nombre=?");
             $stmt->execute([$d['region']]);
-            $estado_id = $stmt->fetch()['id'] ?? null;
-        }
-
-        $usuarioId = null;
-        if (!empty($d['usuario_id'])) {
-            $stmt = $pdo->prepare('SELECT id FROM usuarios WHERE id = ? AND rol = ?');
-            $stmt->execute([(int)$d['usuario_id'], 'user']);
-            $userExists = $stmt->fetch();
-            if (!$userExists) {
-                http_response_code(422);
-                echo json_encode(['success' => false, 'error' => 'Usuario destino no válido']);
-                break;
+            $estadorow = $stmt->fetch();
+            if ($estadorow) {
+                $estado_id = $estadorow['id'];
+                $region = $d['region'];
             }
-            $usuarioId = (int)$d['usuario_id'];
         }
 
         $tipo = strtoupper(trim($d['tipo']));
         $tipo = ($tipo === 'SUBE') ? 'SUBE' : 'BAJA';
 
+        // Insertar la alerta
         $stmt = $pdo->prepare("INSERT INTO alertas (producto_id, tipo, precio_limite, estado_id, usuario_id) VALUES (?,?,?,?,?)");
         $stmt->execute([(int)$d['producto_id'], $tipo, (float)$d['precio_limite'], $estado_id, $usuarioId]);
+        $alertaId = (int)$pdo->lastInsertId();
 
-        echo json_encode(['success' => true, 'id' => (int)$pdo->lastInsertId(), 'mensaje' => 'Alerta creada con éxito para ' . ($usuarioId ? 'usuario específico' : 'todos los usuarios')]);
+        // Crear notificación en el sistema
+        $tipoAlerta = ($tipo === 'SUBE') ? 'ALZA DE PRECIO' : 'BAJA DE PRECIO';
+        $mensaje = "Nueva alerta de {$tipoAlerta} creada para {$producto['nombre']} en {$region}. Límite: \$" . number_format($d['precio_limite'], 2);
+        
+        $stmtNotif = $pdo->prepare("INSERT INTO notificaciones (alerta_id, tipo, producto_nombre, region, precio_anterior, precio_actual, mensaje, leida) VALUES (?,?,?,?,?,?,?,?)");
+        $stmtNotif->execute([
+            $alertaId,
+            $tipoAlerta,
+            $producto['nombre'],
+            $region,
+            $producto['precio_base'],
+            (float)$d['precio_limite'],
+            "Alerta creada: " . $mensaje,
+            0
+        ]);
+
+        // Si es para un usuario específico, enviar correo y crear notificación visible
+        if ($usuarioId) {
+            $stmtUser = $pdo->prepare('SELECT usuario, email FROM usuarios WHERE id = ?');
+            $stmtUser->execute([$usuarioId]);
+            $usuario = $stmtUser->fetch();
+            
+            if ($usuario && !empty($usuario['email'])) {
+                $asunto = "CanastaMX: Alerta de {$tipoAlerta} creada";
+                $cuerpo = "
+                    <p>¡Hola <strong>{$usuario['usuario']}</strong>!</p>
+                    <p>Se ha creado una nueva alerta de monitoreo de precios para ti:</p>
+                    <h3>PRODUCTO: {$producto['nombre']}</h3>
+                    <ul>
+                        <li><strong>Tipo de alerta:</strong> {$tipoAlerta}</li>
+                        <li><strong>Límite de precio:</strong> \$" . number_format($d['precio_limite'], 2) . "</li>
+                        <li><strong>Región:</strong> {$region}</li>
+                        <li><strong>Precio base:</strong> \$" . number_format($producto['precio_base'], 2) . "</li>
+                    </ul>
+                    <p>La alerta se disparará automáticamente cuando el precio " . 
+                    ($tipo === 'SUBE' ? 'alcance o supere' : 'baje a') . 
+                    " el límite que estableciste.</p>
+                    <p>Revisa tu panel de usuario en CanastaMX para más detalles.</p>
+                ";
+                
+                enviarEmail($usuario['email'], $asunto, $cuerpo, $pdo);
+            }
+        }
+
+        echo json_encode(['success' => true, 'id' => $alertaId, 'mensaje' => 'Alerta creada con éxito para ' . ($usuarioId ? 'usuario específico' : 'todos los usuarios')]);
         break;
 
     // ── Eliminar Alerta ─────────────────────────────────────────────────────

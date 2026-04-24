@@ -23,12 +23,16 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'Consumidor');
   .user-welcome { display: grid; gap: 0.25rem; }
   .user-welcome strong { color: var(--blue); }
   .user-actions { display: flex; gap: 0.5rem; align-items: center; }
-  .alert-card { padding: 1rem; background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; }
+  .alert-card { padding: 1rem; background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 0.75rem; transition: all 0.2s ease; }
+  .alert-card:hover { border-color: var(--blue); box-shadow: 0 0 16px rgba(88, 166, 255, 0.1); }
   .alert-card h3 { margin-top: 0; font-size: 1rem; }
   .form-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
   .form-grid .input-group { margin: 0; }
   .btn-primary { background: var(--blue); color: #fff; border: none; border-radius: 10px; padding: 0.9rem 1rem; cursor: pointer; font-weight: 700; }
   .btn-primary:hover { opacity: 0.95; }
+  .btn-period { background: transparent; border: 1px solid var(--border); color: var(--text2); padding: 0.4rem 0.75rem; border-radius: 8px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+  .btn-period:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-period.active { background: var(--blue); color: white; border-color: var(--blue); }
   .my-alerts-table { width: 100%; border-collapse: collapse; }
   .my-alerts-table th, .my-alerts-table td { padding: 0.85rem 0.8rem; border-bottom: 1px solid rgba(148,163,184,0.12); }
   .my-alerts-table th { text-align: left; color: #94a3b8; font-size: 0.81rem; }
@@ -143,8 +147,56 @@ $userName = htmlspecialchars($_SESSION['user_name'] ?? 'Consumidor');
     </div>
 
     <div class="card" style="margin-top:1rem">
+        <div class="card-hd">
+            <div class="card-title">🔔 Notificaciones</div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button onclick="marcarTodasComoLeidas()" class="btn-period" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">Marcar todas como leídas</button>
+            </div>
+        </div>
+        <div id="notificacionesBody" style="max-height: 400px; overflow-y: auto;">Cargando notificaciones...</div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
         <div class="card-hd"><div class="card-title"> Mis alertas</div></div>
         <div id="userAlertsBody">Cargando tus alertas...</div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+        <div class="card-hd"><div class="card-title">⚠️ Crear mi alerta de precio</div></div>
+        <div class="alert-card">
+            <form id="alertForm">
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label>Producto actual</label>
+                        <div id="alertProduct" class="simple-tag">Selecciona un producto</div>
+                    </div>
+                    <div class="input-group">
+                        <label for="alertType">Tipo de alerta</label>
+                        <select id="alertType" required>
+                            <option value="BAJA">📉 BAJA - Avisarme cuando baje de precio</option>
+                            <option value="SUBE">📈 SUBE - Avisarme cuando suba de precio</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="alertPrice">Precio límite ($)</label>
+                        <input type="number" id="alertPrice" placeholder="Ej. 45.00" min="0" step="0.01" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="alertRegion">Región</label>
+                        <select id="alertRegion">
+                            <option value="Nacional">Nacional</option>
+                            <?php foreach ($estados as $e): ?>
+                                <option value="<?= htmlspecialchars($e) ?>"><?= htmlspecialchars($e) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+                    <button type="submit" class="btn-primary">Crear Alerta</button>
+                    <div id="alertFormMessage" class="message-box"></div>
+                </div>
+            </form>
+        </div>
     </div>
 
     <div class="card" style="margin-top:1rem">

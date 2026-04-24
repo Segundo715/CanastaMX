@@ -130,7 +130,10 @@ $usuarios = $db->query("SELECT id, usuario FROM usuarios WHERE rol = 'user' ORDE
     <h3>🔔 Notificaciones de Precios</h3>
     <button onclick="toggleNotificationsPanel()" style="background: none; border: none; color: var(--text2); cursor: pointer; font-size: 1.2rem;">×</button>
   </div>
-  <div id="notificationsBody" class="notif-panel-body">Cargando notificaciones...</div>
+  <div id="notificationsBody" class="notif-panel-body">
+    <p>Cargando notificaciones...</p>
+    <button onclick="loadAdminNotifications()" style="margin-top: 10px; padding: 5px 10px; background: var(--blue); color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 Recargar Notificaciones</button>
+  </div>
 </div>
 
 <div class="layout">
